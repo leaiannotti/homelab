@@ -1,0 +1,14 @@
+[Unit]
+Description=CineBot — Telegram bot for media server
+After=network.target docker.service
+
+[Service]
+Type=simple
+User={{ ansible_user }}
+WorkingDirectory={{ media_server_dir }}/bot
+ExecStart={{ media_server_dir }}/bot/venv/bin/python main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

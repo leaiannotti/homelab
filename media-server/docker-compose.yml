@@ -1,0 +1,230 @@
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - OPENVPN_USER=ma2tOKipJNUHAwP9
+      - OPENVPN_PASSWORD=yThtzgIiYNK0lwhsxBJuw3DugNbAWSw9
+      - VPN_PORT_FORWARDING=on
+      - TZ=${TZ:-Pacific/Auckland}
+    ports:
+      - 8080:8080
+      - 6881:6881
+      - 6881:6881/udp
+    restart: unless-stopped
+
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM:-}
+    volumes:
+      - ./config/plex:/config
+      - ${DATA_ROOT:-/data}/media/movies:/data/movies:ro
+      - ${DATA_ROOT:-/data}/media/tv:/data/tv:ro
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./config/radarr:/config
+      - ${DATA_ROOT:-/data}:/data
+    ports:
+      - "7878:7878"
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./config/sonarr:/config
+      - ${DATA_ROOT:-/data}:/data
+    ports:
+      - "8989:8989"
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: service:gluetun
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Pacific/Auckland}
+      - WEBUI_PORT=8080
+    volumes:
+      - ./config/qbittorrent:/config
+      - ${DATA_ROOT:-/data}/downloads:/data/downloads
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "9696:9696"
+    restart: unless-stopped
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./config/bazarr:/config
+      - ${DATA_ROOT:-/data}/media/movies:/movies
+      - ${DATA_ROOT:-/data}/media/tv:/tv
+    ports:
+      - "6767:6767"
+    restart: unless-stopped
+
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./config/tautulli:/config
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
+
+  unpackerr:
+    image: ghcr.io/unpackerr/unpackerr:latest
+    container_name: unpackerr
+    environment:
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - ./config/unpackerr:/config
+      - ${DATA_ROOT:-/data}/downloads:/downloads
+    ports:
+      - "5757:5757"
+    restart: unless-stopped
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Pacific/Auckland}
+      - HOMEPAGE_ALLOWED_HOSTS=pi-tylos,pi-tylos.local,192.168.1.17,localhost
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - ./config/homepage:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    user: 1000:985
+    group_add:
+      - "985"
+      - "80:3000"
+    restart: unless-stopped
+
+  glances:
+    image: nicolargo/glances:latest
+    container_name: glances
+    pid: host
+    environment:
+      - GLANCES_OPT=-w
+      - TZ=${TZ:-Pacific/Auckland}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "61208:61208"
+    restart: unless-stopped
+
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: jackett
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Pacific/Auckland}
+    volumes:
+      - ./config/jackett:/config
+      - ${DATA_ROOT:-/data}/downloads:/downloads
+    ports:
+      - "9117:9117"
+    restart: unless-stopped
+
+  overseerr:
+    image: sctx/overseerr:latest
+    container_name: overseerr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Pacific/Auckland}
+    volumes:
+      - ./config/overseerr:/app/config
+    ports:
+      - "5055:5055"
+    restart: unless-stopped
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    volumes:
+      - ./config/uptime-kuma:/app/data
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    environment:
+      - TZ=${TZ:-Pacific/Auckland}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 3 * * *
+      - DOCKER_API_VERSION=1.47
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./config/caddy/data:/data
+    restart: unless-stopped

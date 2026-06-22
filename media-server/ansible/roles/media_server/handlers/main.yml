@@ -1,0 +1,7 @@
+---
+- name: restart cinebot
+  ansible.builtin.systemd:
+    name: cinebot
+    state: restarted
+    daemon_reload: true
+  become: true

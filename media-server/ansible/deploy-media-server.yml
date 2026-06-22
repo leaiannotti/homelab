@@ -1,0 +1,8 @@
+- name: Deploy Media Server on pi-tylos
+  hosts: services
+  become: false
+  vars_files:
+    - roles/media_server/vars/main.yml
+
+  roles:
+    - media_server

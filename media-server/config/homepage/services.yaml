@@ -1,0 +1,61 @@
+---
+- Media:
+    - Plex:
+        icon: plex.png
+        href: http://pi-tylos.local:32400/web
+        description: Media server
+    - Radarr:
+        icon: radarr.png
+        href: http://pi-tylos.local:7878
+        widget:
+          type: radarr
+          url: http://radarr:7878
+          key: "3b7f34009b874e7ea9b696eee6f340b3"
+    - Sonarr:
+        icon: sonarr.png
+        href: http://pi-tylos.local:8989
+        widget:
+          type: sonarr
+          url: http://sonarr:8989
+          key: "b894b0363f324ffe9fae50b4f4140be3"
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: http://pi-tylos.local:8080
+    - Prowlarr:
+        icon: prowlarr.png
+        href: http://pi-tylos.local:9696
+    - Jackett:
+        icon: jackett.png
+        href: http://pi-tylos.local:9117
+    - Bazarr:
+        icon: bazarr.png
+        href: http://pi-tylos.local:6767
+    - Overseerr:
+        icon: overseerr.png
+        href: http://pi-tylos.local:5055
+    - "Uptime Kuma":
+        icon: uptime-kuma.png
+        href: http://pi-tylos.local:3001
+    - Tautulli:
+        icon: tautulli.png
+        href: http://pi-tylos.local:8181
+    - Kodi:
+        icon: kodi.png
+        href: http://pi-tylos.local:8081
+        description: HDMI to TV
+
+- AI:
+    - "Open-WebUI":
+        icon: open-webui.png
+        href: http://pi-tylos.local:3000
+        description: Ollama LLM chat
+    - CineBot:
+        icon: telegram.png
+        href: https://t.me/boteflix2
+        description: Telegram bot
+
+- System:
+    - Glances:
+        icon: glances.png
+        href: http://pi-tylos.local:61208
+        description: CPU, RAM, containers, disk

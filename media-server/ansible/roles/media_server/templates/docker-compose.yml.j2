@@ -1,0 +1,74 @@
+services:
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID={{ ansible_user_id | default('1000') }}
+      - PGID={{ ansible_user_gid | default('1000') }}
+      - TZ={{ timezone }}
+      - VERSION=docker
+      - PLEX_CLAIM={{ plex_claim }}
+    volumes:
+      - ./config/plex:/config
+      - {{ media_movies }}:/data/movies:ro
+      - {{ media_tv }}:/data/tv:ro
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID={{ ansible_user_id | default('1000') }}
+      - PGID={{ ansible_user_gid | default('1000') }}
+      - TZ={{ timezone }}
+    volumes:
+      - ./config/radarr:/config
+      - {{ data_root }}:/data
+    ports:
+      - "7878:7878"
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID={{ ansible_user_id | default('1000') }}
+      - PGID={{ ansible_user_gid | default('1000') }}
+      - TZ={{ timezone }}
+    volumes:
+      - ./config/sonarr:/config
+      - {{ data_root }}:/data
+    ports:
+      - "8989:8989"
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID={{ ansible_user_id | default('1000') }}
+      - PGID={{ ansible_user_gid | default('1000') }}
+      - TZ={{ timezone }}
+      - WEBUI_PORT=8080
+    volumes:
+      - ./config/qbittorrent:/config
+      - {{ downloads }}:/data/downloads
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID={{ ansible_user_id | default('1000') }}
+      - PGID={{ ansible_user_gid | default('1000') }}
+      - TZ={{ timezone }}
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "9696:9696"
+    restart: unless-stopped

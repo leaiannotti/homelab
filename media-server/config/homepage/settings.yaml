@@ -1,0 +1,14 @@
+---
+title: Tylos Media Server
+description: Media Server Dashboard
+headerStyle: boxed
+layout:
+  Media:
+    style: row
+    columns: 5
+  AI:
+    style: row
+    columns: 2
+  System:
+    style: row
+    columns: 2
