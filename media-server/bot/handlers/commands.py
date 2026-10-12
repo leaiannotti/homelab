@@ -2,15 +2,14 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
-from .. import config
-from ..services import radarr, sonarr, tmdb
+from ..auth import ADMIN_CALLBACK_PREFIXES, admin_required, is_admin
+from ..services import radarr, sonarr, tmdb, qbittorrent
+
+# Authorization: every update already passed auth.gate (registered in main.py),
+# so handlers here only need to check for admin-only actions.
 
 MOVIES_PER_PAGE = 8
-
-
-def _admin_only(update: Update) -> bool:
-    user_id = update.effective_user.id if update.effective_user else 0
-    return user_id in config.TELEGRAM_ALLOWED_IDS
+MOVIES_LIST_PAGE_SIZE = 30
 
 
 def _shorten(text: str, max_len: int = 200) -> str:
@@ -20,29 +19,59 @@ def _shorten(text: str, max_len: int = 200) -> str:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    text = (
         "CineBot — tu servidor de pelis en casa.\n\n"
         "/search <película> — buscar película\n"
         "/tv <serie> — buscar serie\n"
         "/person <nombre> — buscar actor/director\n"
-        "/status — cola de descargas\n"
+        "/status — cola de descargas (Radarr/Sonarr)\n"
+        "/downloads — torrents en qBittorrent\n"
+        "/library — estadísticas de la biblioteca\n"
+        "/movies [texto] — listar/buscar en tu biblioteca de películas\n"
+        "/recent — últimas películas y series agregadas\n"
+        "/upcoming — próximos estrenos y episodios\n"
         "/help — ayuda"
     )
+    if is_admin(update):
+        text += (
+            "\n\nAdmin\n"
+            "/delete <título> — eliminar de la biblioteca\n"
+            "/adduser <id> [nombre] — autorizar usuario\n"
+            "/removeuser <id> — quitar acceso\n"
+            "/users — usuarios autorizados"
+        )
+    await update.message.reply_text(text)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+    text = (
         "*Comandos*\n"
         "/search \\<película\\> — buscar película en TMDB\n"
         "/tv \\<serie\\> — buscar serie en TMDB\n"
         "/person \\<nombre\\> — buscar actor o director\n"
-        "/status — ver cola de descargas\n\n"
-        "*Flujo típico:*\n"
+        "/status — cola de descargas \\(Radarr/Sonarr\\)\n"
+        "/downloads — torrents en qBittorrent\n"
+        "/library — estadísticas de la biblioteca\n"
+        "/movies \\[texto\\] — listar/buscar películas de tu biblioteca\n"
+        "/recent — últimas películas y series agregadas\n"
+        "/upcoming — próximos estrenos y episodios\n"
+    )
+    if is_admin(update):
+        text += (
+            "\n*Admin*\n"
+            "/delete \\<título\\> — eliminar contenido de la biblioteca\n"
+            "/downloads — además permite pausar/borrar torrents\n"
+            "/adduser \\<id\\> \\[nombre\\] — autorizar un usuario\n"
+            "/removeuser \\<id\\> — quitar acceso\n"
+            "/users — listar usuarios autorizados\n"
+        )
+    text += (
+        "\n*Flujo típico:*\n"
         "1\\. `/search inception`\n"
         "2\\. Tocás un resultado\n"
-        "3\\. Tocás *Agregar a Radarr*",
-        parse_mode=ParseMode.MARKDOWN_V2,
+        "3\\. Tocás *Agregar a Radarr*"
     )
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)
 
 
 async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -220,15 +249,253 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {e}")
 
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+def _fmt_size(b: int) -> str:
+    if b >= 1_099_511_627_776:
+        return f"{b / 1_099_511_627_776:.1f} TB"
+    if b >= 1_073_741_824:
+        return f"{b / 1_073_741_824:.1f} GB"
+    if b >= 1_048_576:
+        return f"{b / 1_048_576:.0f} MB"
+    return f"{b / 1024:.0f} KB"
 
-    if not _admin_only(update):
-        await query.edit_message_text("No autorizado.")
+
+async def library(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        ms = radarr.get_library_stats()
+        ss = sonarr.get_library_stats()
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
         return
 
-    data = query.data
+    lines = [
+        "📚 *Biblioteca*\n",
+        "🎬 *Películas*",
+        f"  Total: {ms['total']}",
+        f"  Descargadas: {ms['has_file']}",
+        f"  Monitoreadas: {ms['monitored']}",
+        f"  Espacio: {_fmt_size(ms['size_bytes'])}",
+        "",
+        "📺 *Series*",
+        f"  Total: {ss['total']}",
+        f"  Monitoreadas: {ss['monitored']}",
+        f"  Episodios: {ss['have_eps']}/{ss['total_eps']}",
+        f"  Espacio: {_fmt_size(ss['size_bytes'])}",
+        "",
+        f"💾 *Total:* {_fmt_size(ms['size_bytes'] + ss['size_bytes'])}",
+    ]
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        movies = radarr.get_recent_movies(5)
+        series = sonarr.get_recent_series(5)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+        return
+
+    lines = ["🆕 *Agregado recientemente*\n"]
+
+    if movies:
+        lines.append("🎬 *Películas*")
+        for m in movies:
+            date_str = m["added"][:10]
+            lines.append(f"  {m['title']} ({m['year']}) — {date_str}")
+
+    if series:
+        lines.append("\n📺 *Series*")
+        for s in series:
+            date_str = s["added"][:10]
+            seasons = f"{s['season_count']} temp." if s["season_count"] else ""
+            lines.append(f"  {s['title']} ({s['year']}) {seasons} — {date_str}")
+
+    if not movies and not series:
+        lines.append("Nada agregado recientemente.")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def downloads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        torrents = qbittorrent.get_torrents()
+        transfer = qbittorrent.get_main_data()
+    except Exception as e:
+        await update.message.reply_text(f"Error conectando a qBittorrent: {e}")
+        return
+
+    if not torrents:
+        await update.message.reply_text("No hay torrents activos.")
+        return
+
+    dl_speed = qbittorrent.format_speed(transfer.get("dl_info_speed", 0))
+    up_speed = qbittorrent.format_speed(transfer.get("up_info_speed", 0))
+    lines = [f"⬇️ {dl_speed}  ⬆️ {up_speed}\n"]
+
+    show_controls = is_admin(update)
+    keyboard = []
+    for t in torrents[:10]:
+        state = t.get("state", "unknown")
+        icon = qbittorrent.STATE_ICON.get(state, "❓")
+        name = t.get("name", "?")
+        if len(name) > 30:
+            name = name[:27] + "..."
+        pct = int(t.get("progress", 0) * 100)
+        size = qbittorrent.format_size(t.get("size", 0))
+        lines.append(f"{icon} {name}")
+        lines.append(f"   {pct}% · {size} · {state}")
+
+        h = t.get("hash", "")
+        if h and show_controls:
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"⏸ {name[:20]}" if state == "downloading" else f"▶️ {name[:20]}",
+                    callback_data=f"qbt_toggle:{h}:{state}"
+                ),
+                InlineKeyboardButton("🗑", callback_data=f"qbt_delete:{h}"),
+            ])
+
+    await update.message.reply_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
+    )
+
+
+async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        movies = radarr.get_upcoming_movies(60)
+        episodes = sonarr.get_upcoming_episodes(7)
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+        return
+
+    lines = ["📅 *Próximamente*\n"]
+
+    if movies:
+        lines.append("🎬 *Películas (próx. 60 días)*")
+        type_label = {"digitalRelease": "digital", "physicalRelease": "físico", "inCinemas": "cines"}
+        for m in movies:
+            label = type_label.get(m["release_type"], m["release_type"])
+            lines.append(f"  {m['title']} ({m['year']}) — {m['release_date']} ({label})")
+
+    if episodes:
+        lines.append("\n📺 *Episodios esta semana*")
+        for ep in episodes:
+            ep_str = f"S{ep['season']:02d}E{ep['episode']:02d}"
+            lines.append(f"  {ep['series']} {ep_str} — {ep['air_date']}")
+
+    if not movies and not episodes:
+        lines.append("Nada en el radar por ahora.")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def list_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        movies = radarr.get_movies_list()
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+        return
+
+    query = " ".join(context.args).lower() if context.args else None
+    if query:
+        movies = [m for m in movies if query in m["title"].lower()]
+
+    movies.sort(key=lambda m: m["title"].lower())
+
+    if not movies:
+        msg = f"No encontré películas para \"{query}\"." if query else "No hay películas en la biblioteca."
+        await update.message.reply_text(msg)
+        return
+
+    if query:
+        # Filtered search: single message, no pagination
+        lines = [f"🎬 *Resultados para \"{query}\"* ({len(movies)}):\n"]
+        for m in movies[:50]:
+            icon = "✅" if m["has_file"] else "⬇️"
+            lines.append(f"{icon} {m['title']} ({m['year']})")
+        if len(movies) > 50:
+            lines.append(f"\n... y {len(movies) - 50} más. Afiná la búsqueda.")
+        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+        return
+
+    await _send_movies_page(update.message, movies, page=1)
+
+
+async def _send_movies_page(target, movies: list[dict], page: int, edit: bool = False):
+    start = (page - 1) * MOVIES_LIST_PAGE_SIZE
+    end = start + MOVIES_LIST_PAGE_SIZE
+    chunk = movies[start:end]
+    total_pages = (len(movies) + MOVIES_LIST_PAGE_SIZE - 1) // MOVIES_LIST_PAGE_SIZE
+    has_file_count = sum(1 for m in movies if m["has_file"])
+
+    lines = [f"🎬 *Películas* — pág {page}/{total_pages} ({has_file_count}/{len(movies)} descargadas)\n"]
+    for m in chunk:
+        icon = "✅" if m["has_file"] else "⬇️"
+        lines.append(f"{icon} {m['title']} ({m['year']})")
+
+    text = "\n".join(lines)
+
+    nav = []
+    if page > 1:
+        nav.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"movies_p:{page - 1}"))
+    if end < len(movies):
+        nav.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"movies_p:{page + 1}"))
+    markup = InlineKeyboardMarkup([nav]) if nav else None
+
+    if edit:
+        await target.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await target.reply_text(text, reply_markup=markup, parse_mode=ParseMode.MARKDOWN)
+
+
+@admin_required
+async def delete_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Uso: /delete <título>\n"
+            "Busca en películas y series para eliminar."
+        )
+        return
+
+    query = " ".join(context.args).lower()
+    try:
+        movies = radarr.get_movies_list()
+        series = sonarr.get_series_list()
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+        return
+
+    matched_movies = [m for m in movies if query in m["title"].lower()]
+    matched_series = [s for s in series if query in s["title"].lower()]
+
+    if not matched_movies and not matched_series:
+        await update.message.reply_text(f"No encontré nada con \"{query}\".")
+        return
+
+    keyboard = []
+    for m in matched_movies[:5]:
+        label = f"🎬 {m['title']} ({m['year']})"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"del_movie:{m['id']}")])
+    for s in matched_series[:5]:
+        label = f"📺 {s['title']} ({s['year']})"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"del_series:{s['id']}")])
+
+    await update.message.reply_text(
+        f"Resultados para *{query}* — tocá para eliminar:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown",
+    )
+
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data or ""
+
+    if data.startswith(ADMIN_CALLBACK_PREFIXES) and not is_admin(update):
+        await query.answer("Solo el admin puede hacer esto.", show_alert=True)
+        return
+
+    await query.answer()
 
     if data.startswith("movie:"):
         tid = int(data.split(":")[1])
@@ -295,6 +562,98 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("m_from_person:"):
         tid = int(data.split(":")[1])
         await _show_movie_details(query, tid)
+
+    elif data.startswith("movies_p:"):
+        page = int(data.split(":")[1])
+        try:
+            movies = radarr.get_movies_list()
+        except Exception as e:
+            await query.edit_message_text(f"Error: {e}")
+            return
+        movies.sort(key=lambda m: m["title"].lower())
+        await _send_movies_page(query, movies, page=page, edit=True)
+
+    elif data.startswith("qbt_toggle:"):
+        parts = data.split(":")
+        h = parts[1]
+        state = parts[2]
+        try:
+            if state == "downloading":
+                qbittorrent.pause_torrent(h)
+                await query.edit_message_text("⏸ Torrent pausado.")
+            else:
+                qbittorrent.resume_torrent(h)
+                await query.edit_message_text("▶️ Torrent reanudado.")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif data.startswith("qbt_delete:"):
+        h = data.split(":")[1]
+        keyboard = [[
+            InlineKeyboardButton("Eliminar torrent (mantener archivos)", callback_data=f"qbt_del_nofiles:{h}"),
+            InlineKeyboardButton("Eliminar TODO (torrent + archivos)", callback_data=f"qbt_del_files:{h}"),
+        ]]
+        await query.edit_message_text(
+            "¿Cómo querés eliminar?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    elif data.startswith("qbt_del_nofiles:"):
+        h = data.split(":")[1]
+        try:
+            qbittorrent.delete_torrent(h, delete_files=False)
+            await query.edit_message_text("🗑 Torrent eliminado (archivos conservados).")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif data.startswith("qbt_del_files:"):
+        h = data.split(":")[1]
+        try:
+            qbittorrent.delete_torrent(h, delete_files=True)
+            await query.edit_message_text("🗑 Torrent y archivos eliminados.")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif data.startswith("del_movie:"):
+        rid = int(data.split(":")[1])
+        keyboard = [[
+            InlineKeyboardButton("Sí, eliminar", callback_data=f"del_movie_confirm:{rid}"),
+            InlineKeyboardButton("Cancelar", callback_data="del_cancel"),
+        ]]
+        await query.edit_message_text(
+            "¿Confirmar eliminación de la película? Se borran los archivos.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    elif data.startswith("del_movie_confirm:"):
+        rid = int(data.split(":")[1])
+        try:
+            radarr.delete_movie(rid, delete_files=True)
+            await query.edit_message_text("🗑 Película eliminada de Radarr y disco.")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif data.startswith("del_series:"):
+        sid = int(data.split(":")[1])
+        keyboard = [[
+            InlineKeyboardButton("Sí, eliminar", callback_data=f"del_series_confirm:{sid}"),
+            InlineKeyboardButton("Cancelar", callback_data="del_cancel"),
+        ]]
+        await query.edit_message_text(
+            "¿Confirmar eliminación de la serie? Se borran los archivos.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+
+    elif data.startswith("del_series_confirm:"):
+        sid = int(data.split(":")[1])
+        try:
+            sonarr.delete_series(sid, delete_files=True)
+            await query.edit_message_text("🗑 Serie eliminada de Sonarr y disco.")
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif data == "del_cancel":
+        await query.edit_message_text("Cancelado.")
 
 
 async def _show_movie_details(query, tmdb_id: int):

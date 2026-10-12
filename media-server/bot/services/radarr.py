@@ -85,3 +85,91 @@ def get_all_movies() -> dict[int, str]:
 def get_history(page_size: int = 5) -> list[dict]:
     data = _get("/history", pageSize=page_size, sortKey="date", sortDirection="descending")
     return data.get("records", [])
+
+
+def get_library_stats() -> dict:
+    """Return total movies, monitored count, and disk usage."""
+    movies = _get("/movie")
+    total = len(movies)
+    monitored = sum(1 for m in movies if m.get("monitored"))
+    size_bytes = sum(
+        m.get("movieFile", {}).get("size", 0) or 0
+        for m in movies
+        if m.get("hasFile")
+    )
+    has_file = sum(1 for m in movies if m.get("hasFile"))
+    return {
+        "total": total,
+        "monitored": monitored,
+        "has_file": has_file,
+        "size_bytes": size_bytes,
+    }
+
+
+def get_recent_movies(limit: int = 5) -> list[dict]:
+    """Return the most recently added movies."""
+    movies = _get("/movie")
+    with_date = [m for m in movies if m.get("added") and m.get("hasFile")]
+    with_date.sort(key=lambda m: m["added"], reverse=True)
+    return [
+        {"title": m.get("title", "?"), "year": m.get("year", ""), "added": m["added"]}
+        for m in with_date[:limit]
+    ]
+
+
+def get_upcoming_movies(days: int = 60) -> list[dict]:
+    """Return monitored movies with an upcoming digital/cinema release."""
+    from datetime import date, timedelta, timezone
+    import re
+
+    today = date.today()
+    cutoff = today + timedelta(days=days)
+    movies = _get("/movie")
+    upcoming = []
+    for m in movies:
+        if not m.get("monitored") or m.get("hasFile"):
+            continue
+        # Check digitalRelease or inCinemas
+        for field in ("digitalRelease", "physicalRelease", "inCinemas"):
+            raw = m.get(field)
+            if not raw:
+                continue
+            try:
+                d = date.fromisoformat(raw[:10])
+            except ValueError:
+                continue
+            if today <= d <= cutoff:
+                upcoming.append({
+                    "title": m.get("title", "?"),
+                    "year": m.get("year", ""),
+                    "release_date": d.isoformat(),
+                    "release_type": field,
+                })
+                break
+    upcoming.sort(key=lambda x: x["release_date"])
+    return upcoming[:10]
+
+
+def delete_movie(radarr_id: int, delete_files: bool = True) -> None:
+    r = httpx.delete(
+        f"{RADARR_URL}/api/v3/movie/{radarr_id}",
+        params={"apiKey": RADARR_API_KEY, "deleteFiles": str(delete_files).lower()},
+        timeout=15,
+    )
+    r.raise_for_status()
+
+
+def get_movies_list() -> list[dict]:
+    """Return all movies with id, title, year, tmdbId, hasFile."""
+    movies = _get("/movie")
+    return [
+        {
+            "id": m["id"],
+            "title": m.get("title", "?"),
+            "year": m.get("year", ""),
+            "tmdb_id": m.get("tmdbId"),
+            "has_file": m.get("hasFile", False),
+            "monitored": m.get("monitored", False),
+        }
+        for m in movies
+    ]

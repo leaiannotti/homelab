@@ -108,8 +108,6 @@ def get_series_season_status(tvdb_id: int) -> dict[str, list[dict]]:
                 "total_episodes": s.get("statistics", {}).get("totalEpisodeCount", 0),
             })
     return {"found": True, "title": match.get("title", ""), "seasons": seasons}
-    data = _get("/queue", includeUnknownSeriesItems="true")
-    return data.get("records", [])
 
 
 def series_exists(tvdb_id: int) -> bool:
@@ -125,3 +123,92 @@ def get_history(page_size: int = 5) -> list[dict]:
 def get_queue() -> list[dict]:
     data = _get("/queue", includeUnknownSeriesItems="true")
     return data.get("records", [])
+
+
+def get_library_stats() -> dict:
+    """Return total series, episode counts, and disk usage."""
+    series_list = _get("/series")
+    total = len(series_list)
+    monitored = sum(1 for s in series_list if s.get("monitored"))
+    total_eps = sum(s.get("statistics", {}).get("totalEpisodeCount", 0) for s in series_list)
+    have_eps = sum(s.get("statistics", {}).get("episodeFileCount", 0) for s in series_list)
+    size_bytes = sum(s.get("statistics", {}).get("sizeOnDisk", 0) for s in series_list)
+    return {
+        "total": total,
+        "monitored": monitored,
+        "total_eps": total_eps,
+        "have_eps": have_eps,
+        "size_bytes": size_bytes,
+    }
+
+
+def get_recent_series(limit: int = 5) -> list[dict]:
+    """Return the most recently added series."""
+    series_list = _get("/series")
+    with_date = [s for s in series_list if s.get("added")]
+    with_date.sort(key=lambda s: s["added"], reverse=True)
+    return [
+        {
+            "title": s.get("title", "?"),
+            "year": s.get("year", ""),
+            "added": s["added"],
+            "season_count": s.get("statistics", {}).get("seasonCount", 0),
+        }
+        for s in with_date[:limit]
+    ]
+
+
+def get_upcoming_episodes(days: int = 7) -> list[dict]:
+    """Return upcoming episodes airing within the next N days."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    end = today + timedelta(days=days)
+    data = _get(
+        "/calendar",
+        start=today.isoformat(),
+        end=end.isoformat(),
+        unmonitored="false",
+    )
+    episodes = []
+    for ep in data:
+        air_raw = ep.get("airDate") or ep.get("airDateUtc", "")
+        try:
+            air = date.fromisoformat(air_raw[:10])
+        except ValueError:
+            continue
+        series = ep.get("series", {})
+        episodes.append({
+            "series": series.get("title", ep.get("seriesTitle", "?")),
+            "season": ep.get("seasonNumber", 0),
+            "episode": ep.get("episodeNumber", 0),
+            "title": ep.get("title", ""),
+            "air_date": air.isoformat(),
+        })
+    episodes.sort(key=lambda x: x["air_date"])
+    return episodes[:10]
+
+
+def delete_series(sonarr_id: int, delete_files: bool = True) -> None:
+    r = httpx.delete(
+        f"{SONARR_URL}/api/v3/series/{sonarr_id}",
+        params={"apiKey": SONARR_API_KEY, "deleteFiles": str(delete_files).lower()},
+        timeout=15,
+    )
+    r.raise_for_status()
+
+
+def get_series_list() -> list[dict]:
+    """Return all series with id, title, year, tvdbId."""
+    series_list = _get("/series")
+    return [
+        {
+            "id": s["id"],
+            "title": s.get("title", "?"),
+            "year": s.get("year", ""),
+            "tvdb_id": s.get("tvdbId"),
+            "monitored": s.get("monitored", False),
+            "season_count": s.get("statistics", {}).get("seasonCount", 0),
+        }
+        for s in series_list
+    ]
