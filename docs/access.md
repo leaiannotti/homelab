@@ -1,22 +1,27 @@
 # Access Model
 
-## SSH
-
-Current SSH aliases:
+## SSH aliases
 
 - `pi-tylos`
 - `pi-phobetor`
 
+## Current policy
+
+- Public key authentication is enabled.
+- Password authentication remains enabled as fallback during the early setup phase.
+- Direct root SSH login should be disabled.
+- Daily administration must use normal users with `sudo`.
+
 ## Admin users
 
-| Node | Admin user | Sudo | Notes |
-|---|---|---|---|
-| `pi-tylos` | `leandroian` | yes | Main services node |
-| `pi-phobetor` | `leandroian` | yes | Migrated away from direct root login |
+| Node | Admin user | Notes |
+|---|---|---|
+| `pi-tylos` | `leandroian` | Main services node |
+| `pi-phobetor` | `leandroian` | Infra/lightweight gateway node |
 
-## Authentication policy
+## Current IPs
 
-- SSH public key authentication is enabled.
-- Password authentication remains enabled during the early setup phase.
-- Direct root SSH login should be disabled.
-- Daily administration should be done through normal users with `sudo`.
+| Node | IP | Assignment |
+|---|---:|---|
+| `pi-tylos` | `192.168.1.17` | DHCP lease, not reserved |
+| `pi-phobetor` | `192.168.1.18` | DHCP lease, not reserved |
