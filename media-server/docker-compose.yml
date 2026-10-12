@@ -136,11 +136,14 @@ services:
   unpackerr:
     image: ghcr.io/unpackerr/unpackerr:latest
     container_name: unpackerr
+    # Run as the same user as Radarr/Sonarr so extracted files stay manageable by them.
+    user: "1000:1000"
     environment:
-      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+      - TZ=${TZ:-Pacific/Auckland}
     volumes:
       - ./config/unpackerr:/config
-      - ${DATA_ROOT:-/data}/downloads:/downloads
+      # Same container path as Radarr/Sonarr/qBittorrent (unpackerr.conf uses /data/downloads).
+      - ${DATA_ROOT:-/data}/downloads:/data/downloads
     ports:
       - "5757:5757"
     restart: unless-stopped
