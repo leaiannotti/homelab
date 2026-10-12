@@ -13,13 +13,18 @@ services:
       - PORT_FORWARD_ONLY=on
       # Push the forwarded port to qBittorrent (needs "bypass auth for localhost" in qBittorrent).
       # The DOWN command resets the port so qBittorrent re-binds after a reconnect.
-      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":{{PORT}},\"current_network_interface\":\"{{VPN_INTERFACE}}\",\"random_port\":false,\"upnp\":false}" http://127.0.0.1:8080/api/v2/app/setPreferences'
+      # UP retries ~10 min: covers qbittorrent being restarted by autoheal after a gluetun restart.
+      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --tries=60 --waitretry=10 --post-data "json={\"listen_port\":{{PORT}},\"current_network_interface\":\"{{VPN_INTERFACE}}\",\"random_port\":false,\"upnp\":false}" http://127.0.0.1:8080/api/v2/app/setPreferences'
       - VPN_PORT_FORWARDING_DOWN_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":0,\"current_network_interface\":\"lo\"}" http://127.0.0.1:8080/api/v2/app/setPreferences'
       - TZ=${TZ:-Pacific/Auckland}
     ports:
       - 8080:8080
       - 6881:6881
       - 6881:6881/udp
+    labels:
+      # Recreating gluetun breaks qbittorrent's network namespace, so never auto-update it.
+      # Update manually: docker compose pull gluetun && docker compose up -d gluetun qbittorrent
+      - com.centurylinklabs.watchtower.enable=false
     restart: unless-stopped
 
   plex:
@@ -78,6 +83,16 @@ services:
     volumes:
       - ./config/qbittorrent:/config
       - ${DATA_ROOT:-/data}/downloads:/data/downloads
+    # Unhealthy when it has no egress through the VPN (e.g. gluetun restarted and the
+    # shared network namespace is gone). autoheal then restarts it to re-join gluetun.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-m", "10", "-o", "/dev/null", "https://cloudflare.com/cdn-cgi/trace"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    labels:
+      - autoheal=true
     restart: unless-stopped
     depends_on:
       gluetun:
@@ -155,7 +170,8 @@ services:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
       - TZ=${TZ:-Pacific/Auckland}
-      - HOMEPAGE_ALLOWED_HOSTS=pi-tylos,pi-tylos.local,192.168.1.17,localhost
+      # homepage:3000 = Uptime Kuma monitor (internal Docker network)
+      - HOMEPAGE_ALLOWED_HOSTS=pi-tylos,pi-tylos.local,192.168.1.17,localhost,homepage:3000
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - ./config/homepage:/app/config
@@ -209,6 +225,20 @@ services:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_SCHEDULE=0 0 3 * * *
       - DOCKER_API_VERSION=1.47
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  # Restarts containers labeled autoheal=true when they become unhealthy.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    network_mode: none   # only talks to the Docker socket
+    environment:
+      - TZ=${TZ:-Pacific/Auckland}
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=300
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
