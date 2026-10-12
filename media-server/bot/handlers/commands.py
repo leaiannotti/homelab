@@ -3,6 +3,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from ..auth import ADMIN_CALLBACK_PREFIXES, admin_required, is_admin
+from ..errors import report_error
 from ..services import radarr, sonarr, tmdb, qbittorrent
 
 # Authorization: every update already passed auth.gate (registered in main.py),
@@ -83,7 +84,7 @@ async def search_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         results = tmdb.search_movies(query)
     except Exception as e:
-        await update.message.reply_text(f"Error buscando: {e}")
+        await update.message.reply_text(report_error("buscar la película", e))
         return
 
     if not results:
@@ -113,7 +114,7 @@ async def search_tv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         results = tmdb.search_tv(query)
     except Exception as e:
-        await update.message.reply_text(f"Error buscando: {e}")
+        await update.message.reply_text(report_error("buscar la serie", e))
         return
 
     if not results:
@@ -143,7 +144,7 @@ async def search_person(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         results = tmdb.search_person(query)
     except Exception as e:
-        await update.message.reply_text(f"Error buscando: {e}")
+        await update.message.reply_text(report_error("buscar a la persona", e))
         return
 
     if not results:
@@ -246,7 +247,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text("\n".join(lines))
     except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(report_error("consultar las descargas", e))
 
 
 def _fmt_size(b: int) -> str:
@@ -264,7 +265,7 @@ async def library(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ms = radarr.get_library_stats()
         ss = sonarr.get_library_stats()
     except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(report_error("consultar la biblioteca", e))
         return
 
     lines = [
@@ -291,7 +292,7 @@ async def recent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movies = radarr.get_recent_movies(5)
         series = sonarr.get_recent_series(5)
     except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(report_error("consultar lo agregado recientemente", e))
         return
 
     lines = ["🆕 *Agregado recientemente*\n"]
@@ -320,7 +321,7 @@ async def downloads(update: Update, context: ContextTypes.DEFAULT_TYPE):
         torrents = qbittorrent.get_torrents()
         transfer = qbittorrent.get_main_data()
     except Exception as e:
-        await update.message.reply_text(f"Error conectando a qBittorrent: {e}")
+        await update.message.reply_text(report_error("conectarme a qBittorrent", e))
         return
 
     if not torrents:
@@ -365,7 +366,7 @@ async def upcoming(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movies = radarr.get_upcoming_movies(60)
         episodes = sonarr.get_upcoming_episodes(7)
     except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(report_error("consultar los próximos estrenos", e))
         return
 
     lines = ["📅 *Próximamente*\n"]
@@ -393,7 +394,7 @@ async def list_movies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         movies = radarr.get_movies_list()
     except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(report_error("listar las películas", e))
         return
 
     query = " ".join(context.args).lower() if context.args else None
@@ -462,7 +463,7 @@ async def delete_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
         movies = radarr.get_movies_list()
         series = sonarr.get_series_list()
     except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+        await update.message.reply_text(report_error("buscar en la biblioteca", e))
         return
 
     matched_movies = [m for m in movies if query in m["title"].lower()]
@@ -568,7 +569,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             movies = radarr.get_movies_list()
         except Exception as e:
-            await query.edit_message_text(f"Error: {e}")
+            await query.edit_message_text(report_error("listar las películas", e))
             return
         movies.sort(key=lambda m: m["title"].lower())
         await _send_movies_page(query, movies, page=page, edit=True)
@@ -585,7 +586,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 qbittorrent.resume_torrent(h)
                 await query.edit_message_text("▶️ Torrent reanudado.")
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {e}")
+            await query.edit_message_text(report_error("cambiar el estado del torrent", e))
 
     elif data.startswith("qbt_delete:"):
         h = data.split(":")[1]
@@ -604,7 +605,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             qbittorrent.delete_torrent(h, delete_files=False)
             await query.edit_message_text("🗑 Torrent eliminado (archivos conservados).")
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {e}")
+            await query.edit_message_text(report_error("eliminar el torrent", e))
 
     elif data.startswith("qbt_del_files:"):
         h = data.split(":")[1]
@@ -612,7 +613,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             qbittorrent.delete_torrent(h, delete_files=True)
             await query.edit_message_text("🗑 Torrent y archivos eliminados.")
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {e}")
+            await query.edit_message_text(report_error("eliminar el torrent", e))
 
     elif data.startswith("del_movie:"):
         rid = int(data.split(":")[1])
@@ -631,7 +632,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             radarr.delete_movie(rid, delete_files=True)
             await query.edit_message_text("🗑 Película eliminada de Radarr y disco.")
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {e}")
+            await query.edit_message_text(report_error("eliminar la película", e))
 
     elif data.startswith("del_series:"):
         sid = int(data.split(":")[1])
@@ -650,7 +651,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sonarr.delete_series(sid, delete_files=True)
             await query.edit_message_text("🗑 Serie eliminada de Sonarr y disco.")
         except Exception as e:
-            await query.edit_message_text(f"❌ Error: {e}")
+            await query.edit_message_text(report_error("eliminar la serie", e))
 
     elif data == "del_cancel":
         await query.edit_message_text("Cancelado.")
@@ -662,7 +663,7 @@ async def _show_movie_details(query, tmdb_id: int):
         cast, directors = tmdb.get_movie_credits(tmdb_id)
         already_have = radarr.movie_exists(tmdb_id)
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("mostrar la película", e))
         return
 
     text = (
@@ -723,7 +724,7 @@ async def _add_movie(query, tmdb_id: int):
             parse_mode=ParseMode.MARKDOWN_V2,
         )
     except Exception as e:
-        await query.edit_message_text(f"❌ Error: {e}")
+        await query.edit_message_text(report_error("agregar la película", e))
 
 
 async def _show_tv_details(query, tmdb_id: int):
@@ -738,7 +739,7 @@ async def _show_tv_details(query, tmdb_id: int):
         except Exception:
             pass
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("mostrar la serie", e))
         return
 
     text = (
@@ -802,14 +803,14 @@ async def _add_tv(query, tmdb_id: int):
             parse_mode=ParseMode.MARKDOWN_V2,
         )
     except Exception as e:
-        await query.edit_message_text(f"❌ Error: {e}")
+        await query.edit_message_text(report_error("agregar la serie", e))
 
 
 async def _show_cast(query, tmdb_id: int):
     try:
         members = tmdb.get_movie_cast(tmdb_id)
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("mostrar el elenco", e))
         return
 
     if not members:
@@ -843,7 +844,7 @@ async def _show_person_bio(query, person_id: int):
     try:
         person = tmdb.get_person(person_id)
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("mostrar la persona", e))
         return
 
     name = person.get("name", "Desconocido")
@@ -898,7 +899,7 @@ async def _show_person_movies(query, person_id: int, page: int = 1):
     try:
         movies = tmdb.get_person_movie_credits(person_id, page=page)
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("buscar sus películas", e))
         return
 
     if not movies:
@@ -929,7 +930,7 @@ async def _show_tv_cast(query, tmdb_id: int):
     try:
         members = tmdb.get_tv_cast(tmdb_id)
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("mostrar el elenco", e))
         return
 
     if not members:
@@ -966,7 +967,7 @@ async def _show_tv_seasons(query, tmdb_id: int):
         tvdb_id = ext.get("tvdb_id")
         existing = sonarr.get_series_season_status(tvdb_id) if tvdb_id else {"found": False, "seasons": []}
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("mostrar las temporadas", e))
         return
 
     if not seasons:
@@ -1019,14 +1020,14 @@ async def _add_tv_season(query, tmdb_id: int, season_num: int):
             parse_mode=ParseMode.MARKDOWN_V2,
         )
     except Exception as e:
-        await query.edit_message_text(f"❌ Error: {e}")
+        await query.edit_message_text(report_error("agregar la temporada", e))
 
 
 async def _show_person_tv(query, person_id: int, page: int = 1):
     try:
         shows = tmdb.get_person_tv_credits(person_id, page=page)
     except Exception as e:
-        await query.edit_message_text(f"Error: {e}")
+        await query.edit_message_text(report_error("buscar sus series", e))
         return
 
     if not shows:

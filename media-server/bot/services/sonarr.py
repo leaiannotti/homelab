@@ -2,10 +2,12 @@ import httpx
 
 from ..config import SONARR_URL, SONARR_API_KEY
 
+# API key goes in a header, never in the URL (URLs end up in error messages/logs).
+_HEADERS = {"X-Api-Key": SONARR_API_KEY}
+
 
 def _get(path: str, **params) -> dict:
-    params["apiKey"] = SONARR_API_KEY
-    r = httpx.get(f"{SONARR_URL}/api/v3{path}", params=params, timeout=30)
+    r = httpx.get(f"{SONARR_URL}/api/v3{path}", params=params, headers=_HEADERS, timeout=30)
     r.raise_for_status()
     return r.json()
 
@@ -13,7 +15,7 @@ def _get(path: str, **params) -> dict:
 def _post(path: str, body: dict) -> dict:
     r = httpx.post(
         f"{SONARR_URL}/api/v3{path}",
-        params={"apiKey": SONARR_API_KEY},
+        headers=_HEADERS,
         json=body,
         timeout=15,
     )
@@ -84,7 +86,7 @@ def add_series_with_seasons(tvdb_id: int, season_numbers: list[int], title: str 
 def _put(path: str, body: dict) -> dict:
     r = httpx.put(
         f"{SONARR_URL}/api/v3{path}",
-        params={"apiKey": SONARR_API_KEY},
+        headers=_HEADERS,
         json=body,
         timeout=15,
     )
@@ -192,7 +194,7 @@ def get_upcoming_episodes(days: int = 7) -> list[dict]:
 def delete_series(sonarr_id: int, delete_files: bool = True) -> None:
     r = httpx.delete(
         f"{SONARR_URL}/api/v3/series/{sonarr_id}",
-        params={"apiKey": SONARR_API_KEY, "deleteFiles": str(delete_files).lower()},
+        headers=_HEADERS, params={"deleteFiles": str(delete_files).lower()},
         timeout=15,
     )
     r.raise_for_status()
