@@ -9,6 +9,12 @@ services:
       - VPN_TYPE=wireguard
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY:?set WIREGUARD_PRIVATE_KEY in .env}
       - VPN_PORT_FORWARDING=on
+      # Only pick ProtonVPN servers that support P2P / port forwarding.
+      - PORT_FORWARD_ONLY=on
+      # Push the forwarded port to qBittorrent (needs "bypass auth for localhost" in qBittorrent).
+      # The DOWN command resets the port so qBittorrent re-binds after a reconnect.
+      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":{{PORT}},\"current_network_interface\":\"{{VPN_INTERFACE}}\",\"random_port\":false,\"upnp\":false}" http://127.0.0.1:8080/api/v2/app/setPreferences'
+      - VPN_PORT_FORWARDING_DOWN_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":0,\"current_network_interface\":\"lo\"}" http://127.0.0.1:8080/api/v2/app/setPreferences'
       - TZ=${TZ:-Pacific/Auckland}
     ports:
       - 8080:8080
