@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Secrets / local env
+.env
+.env.bak-*
+
+# AI tooling caches
+.atl/
