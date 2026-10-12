@@ -3,6 +3,7 @@
   become: false
   vars_files:
     - roles/media_server/vars/main.yml
+    - roles/media_server/vars/vault.yml   # ansible-vault encrypted
 
   roles:
     - media_server

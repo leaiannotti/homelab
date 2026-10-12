@@ -5,7 +5,7 @@
     state: directory
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
-    mode: "0755"
+    # mode intentionally not enforced: live movies/tv dirs are 0777 (TODO: audit and tighten)
   become: true
   loop:
     - "{{ media_movies }}"
@@ -28,15 +28,18 @@
     - qbittorrent
     - prowlarr
 
+# Single source of truth: the repo's media-server/docker-compose.yml (secrets come from .env).
 - name: Deploy docker-compose.yml
-  ansible.builtin.template:
-    src: docker-compose.yml.j2
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../docker-compose.yml"
     dest: "{{ media_server_dir }}/docker-compose.yml"
+    mode: "0644"
 
 - name: Deploy .env file
   ansible.builtin.template:
     src: env.j2
     dest: "{{ media_server_dir }}/.env"
+    mode: "0600"
 
 - name: Start docker compose stack
   ansible.builtin.command:
@@ -67,6 +70,15 @@
   retries: 30
   delay: 5
 
+# Root folders: query first, create only if missing (idempotent).
+- name: Get Radarr root folders
+  ansible.builtin.uri:
+    url: "http://localhost:7878/api/v3/rootfolder"
+    headers:
+      X-Api-Key: "{{ radarr_api_key }}"
+  register: radarr_roots
+  check_mode: false
+
 - name: Configure Radarr root folder
   ansible.builtin.uri:
     url: "http://localhost:7878/api/v3/rootfolder"
@@ -76,7 +88,17 @@
     body_format: json
     body:
       path: "/data/media/movies"
-  ignore_errors: true
+    status_code: [200, 201]
+  when: "'/data/media/movies' not in (radarr_roots.json | map(attribute='path') | list)"
+  changed_when: true
+
+- name: Get Sonarr root folders
+  ansible.builtin.uri:
+    url: "http://localhost:8989/api/v3/rootfolder"
+    headers:
+      X-Api-Key: "{{ sonarr_api_key }}"
+  register: sonarr_roots
+  check_mode: false
 
 - name: Configure Sonarr root folder
   ansible.builtin.uri:
@@ -87,12 +109,22 @@
     body_format: json
     body:
       path: "/data/media/tv"
-  ignore_errors: true
+    status_code: [200, 201]
+  when: "'/data/media/tv' not in (sonarr_roots.json | map(attribute='path') | list)"
+  changed_when: true
 
 - name: Copy bot files
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../bot/"
+    src: "{{ playbook_dir }}/../bot/"
     dest: "{{ media_server_dir }}/bot/"
+
+- name: Install system packages required by the pip module
+  ansible.builtin.apt:
+    name:
+      - python3-packaging
+      - python3-venv
+    state: present
+  become: true
 
 - name: Install bot Python dependencies
   ansible.builtin.pip:

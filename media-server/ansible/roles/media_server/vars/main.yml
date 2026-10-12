@@ -1,19 +1,23 @@
 # ── Data paths ──
-data_root: /data
+data_root: /mnt/ai-data/data
 media_movies: "{{ data_root }}/media/movies"
 media_tv: "{{ data_root }}/media/tv"
 downloads: "{{ data_root }}/downloads"
 
 # ── Service config ──
 media_server_dir: "/home/{{ ansible_user }}/media-server"
-timezone: "America/Argentina/Buenos_Aires"
+timezone: "Pacific/Auckland"
 
-# ── API keys (fetch from running services after deploy) ──
-radarr_api_key: "3b7f34009b874e7ea9b696eee6f340b3"
-sonarr_api_key: "b894b0363f324ffe9fae50b4f4140be3"
+# ── Bot config (non-secret) ──
+telegram_admin_id: "836031672"
+telegram_extra_users: ""   # optional, comma-separated user IDs (prefer /adduser from chat)
+qbittorrent_user: "admin"
 
-# ── Bot config (fill in before running) ──
-telegram_bot_token: ""
-telegram_admin_id: ""
-tmdb_api_key: ""
-plex_claim: ""
+# ── Secrets: values live in vault.yml (ansible-vault encrypted) ──
+radarr_api_key: "{{ vault_radarr_api_key }}"
+sonarr_api_key: "{{ vault_sonarr_api_key }}"
+telegram_bot_token: "{{ vault_telegram_bot_token }}"
+tmdb_api_key: "{{ vault_tmdb_api_key }}"
+qbittorrent_pass: "{{ vault_qbittorrent_pass }}"
+plex_claim: "{{ vault_plex_claim | default('') }}"
+wireguard_private_key: "{{ vault_wireguard_private_key }}"
