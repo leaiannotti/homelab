@@ -39,7 +39,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/delete <título> — eliminar de la biblioteca\n"
             "/adduser <id> [nombre] — autorizar usuario\n"
             "/removeuser <id> — quitar acceso\n"
-            "/users — usuarios autorizados"
+            "/users — usuarios autorizados\n"
+            "/scan — buscar archivos ejecutables (también corre cada noche)"
         )
     await update.message.reply_text(text)
 
@@ -65,6 +66,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/adduser \\<id\\> \\[nombre\\] — autorizar un usuario\n"
             "/removeuser \\<id\\> — quitar acceso\n"
             "/users — listar usuarios autorizados\n"
+            "/scan — buscar archivos ejecutables \\(también corre cada noche\\)\n"
         )
     text += (
         "\n*Flujo típico:*\n"

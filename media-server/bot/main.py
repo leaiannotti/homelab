@@ -5,7 +5,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, TypeHandler
 
-from . import auth
+from . import auth, security_scan
 from .config import TELEGRAM_BOT_TOKEN
 from .handlers import admin, commands
 
@@ -60,7 +60,10 @@ def main():
     app.add_handler(CommandHandler("adduser", admin.add_user))
     app.add_handler(CommandHandler("removeuser", admin.remove_user))
     app.add_handler(CommandHandler("users", admin.list_users))
+    app.add_handler(CommandHandler("scan", security_scan.scan_command))
     app.add_handler(CallbackQueryHandler(commands.button_callback))
+
+    security_scan.schedule(app)
 
     logging.info("CineBot started")
     app.run_polling(allowed_updates=["message", "callback_query"])

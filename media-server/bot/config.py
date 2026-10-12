@@ -47,5 +47,14 @@ SONARR_URL = require("SONARR_URL").rstrip("/")
 SONARR_API_KEY = require("SONARR_API_KEY")
 
 QBITTORRENT_URL = os.getenv("QBITTORRENT_URL", "http://localhost:8080").rstrip("/")
+TZ = os.getenv("TZ", "Pacific/Auckland")
+
+# Nightly executable scan (comma-separated paths). Defaults to the whole data root.
+SECURITY_SCAN_PATHS = [
+    p.strip()
+    for p in os.getenv("SECURITY_SCAN_PATHS", os.getenv("DATA_ROOT", "/data")).split(",")
+    if p.strip()
+]
+
 QBITTORRENT_USER = require("QBITTORRENT_USER")
 QBITTORRENT_PASS = require("QBITTORRENT_PASS")
