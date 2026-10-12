@@ -21,7 +21,10 @@
 
 ## Current IPs
 
-| Node | IP | Assignment |
-|---|---:|---|
-| `pi-tylos` | `192.168.1.17` | DHCP lease, not reserved |
-| `pi-phobetor` | `192.168.1.18` | DHCP lease, not reserved |
+| Node | IP | Assignment | MAC (eth0) |
+|---|---:|---|---|
+| `pi-tylos` | `192.168.1.17` | DHCP reservation on router | `dc:a6:32:e9:ea:f3` |
+| `pi-phobetor` | `192.168.1.18` | DHCP lease, not reserved (node currently powered off) | — |
+
+Radarr/Sonarr `AllowedHosts` and Homepage `HOMEPAGE_ALLOWED_HOSTS` include `192.168.1.17`;
+update them if this IP ever changes.
