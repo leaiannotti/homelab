@@ -6,8 +6,8 @@ services:
       - NET_ADMIN
     environment:
       - VPN_SERVICE_PROVIDER=protonvpn
-      - OPENVPN_USER=ma2tOKipJNUHAwP9
-      - OPENVPN_PASSWORD=yThtzgIiYNK0lwhsxBJuw3DugNbAWSw9
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY:?set WIREGUARD_PRIVATE_KEY in .env}
       - VPN_PORT_FORWARDING=on
       - TZ=${TZ:-Pacific/Auckland}
     ports:
@@ -151,9 +151,8 @@ services:
     volumes:
       - ./config/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    user: 1000:985
-    group_add:
-      - "985"
+    user: 1000:985   # 985 = docker group on the host (read docker.sock)
+    ports:
       - "80:3000"
     restart: unless-stopped
 
@@ -170,19 +169,6 @@ services:
       - "61208:61208"
     restart: unless-stopped
 
-  jackett:
-    image: lscr.io/linuxserver/jackett:latest
-    container_name: jackett
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Pacific/Auckland}
-    volumes:
-      - ./config/jackett:/config
-      - ${DATA_ROOT:-/data}/downloads:/downloads
-    ports:
-      - "9117:9117"
-    restart: unless-stopped
 
   overseerr:
     image: sctx/overseerr:latest
@@ -216,15 +202,4 @@ services:
       - DOCKER_API_VERSION=1.47
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
-
-  caddy:
-    image: caddy:latest
-    container_name: caddy
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile
-      - ./config/caddy/data:/data
     restart: unless-stopped

@@ -51,7 +51,7 @@
         description: Ollama LLM chat
     - CineBot:
         icon: telegram.png
-        href: https://t.me/boteflix2
+        href: https://t.me/boteflix2_bot
         description: Telegram bot
 
 - System:
