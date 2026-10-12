@@ -10,14 +10,14 @@
         widget:
           type: radarr
           url: http://radarr:7878
-          key: "3b7f34009b874e7ea9b696eee6f340b3"
+          key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
     - Sonarr:
         icon: sonarr.png
         href: http://pi-tylos.local:8989
         widget:
           type: sonarr
           url: http://sonarr:8989
-          key: "b894b0363f324ffe9fae50b4f4140be3"
+          key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
     - qBittorrent:
         icon: qbittorrent.png
         href: http://pi-tylos.local:8080

@@ -173,6 +173,9 @@ services:
       # homepage:3000 = Uptime Kuma monitor (internal Docker network)
       - HOMEPAGE_ALLOWED_HOSTS=pi-tylos,pi-tylos.local,192.168.1.17,localhost,homepage:3000
       - DOCKER_HOST=unix:///var/run/docker.sock
+      # Widget API keys come from .env (referenced as {{HOMEPAGE_VAR_*}} in services.yaml)
+      - HOMEPAGE_VAR_RADARR_KEY=${RADARR_API_KEY:?set RADARR_API_KEY in .env}
+      - HOMEPAGE_VAR_SONARR_KEY=${SONARR_API_KEY:?set SONARR_API_KEY in .env}
     volumes:
       - ./config/homepage:/app/config
       - /var/run/docker.sock:/var/run/docker.sock:ro
