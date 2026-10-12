@@ -191,6 +191,25 @@ def get_upcoming_episodes(days: int = 7) -> list[dict]:
     return episodes[:10]
 
 
+def get_exclusive_download_ids(series_id: int) -> set[str]:
+    """Torrent hashes (downloadIds) of this series that no other existing series uses.
+
+    Must be called BEFORE deleting the series.
+    """
+    ids = {r["downloadId"] for r in _get("/history/series", seriesId=series_id) if r.get("downloadId")}
+    queue = _get("/queue", pageSize=500, includeUnknownSeriesItems="false").get("records", [])
+    ids |= {r["downloadId"] for r in queue if r.get("seriesId") == series_id and r.get("downloadId")}
+
+    existing = {s["id"] for s in _get("/series")}
+    exclusive = set()
+    for download_id in ids:
+        records = _get("/history", downloadId=download_id, pageSize=100).get("records", [])
+        others = {r.get("seriesId") for r in records} - {series_id, None}
+        if not others & existing:
+            exclusive.add(download_id)
+    return exclusive
+
+
 def delete_series(sonarr_id: int, delete_files: bool = True) -> None:
     r = httpx.delete(
         f"{SONARR_URL}/api/v3/series/{sonarr_id}",

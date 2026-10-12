@@ -622,17 +622,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("Cancelar", callback_data="del_cancel"),
         ]]
         await query.edit_message_text(
-            "¿Confirmar eliminación de la película? Se borran los archivos.",
+            "¿Confirmar eliminación de la película?\n"
+            "Se borran el archivo de la biblioteca y su torrent con la descarga.",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
     elif data.startswith("del_movie_confirm:"):
         rid = int(data.split(":")[1])
-        try:
-            radarr.delete_movie(rid, delete_files=True)
-            await query.edit_message_text("🗑 Película eliminada de Radarr y disco.")
-        except Exception as e:
-            await query.edit_message_text(report_error("eliminar la película", e))
+        await _delete_with_torrents(
+            query, "la película",
+            get_ids=lambda: radarr.get_exclusive_download_ids(rid),
+            delete=lambda: radarr.delete_movie(rid, delete_files=True),
+        )
 
     elif data.startswith("del_series:"):
         sid = int(data.split(":")[1])
@@ -641,20 +642,54 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("Cancelar", callback_data="del_cancel"),
         ]]
         await query.edit_message_text(
-            "¿Confirmar eliminación de la serie? Se borran los archivos.",
+            "¿Confirmar eliminación de la serie?\n"
+            "Se borran los archivos de la biblioteca y sus torrents con las descargas.",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
     elif data.startswith("del_series_confirm:"):
         sid = int(data.split(":")[1])
-        try:
-            sonarr.delete_series(sid, delete_files=True)
-            await query.edit_message_text("🗑 Serie eliminada de Sonarr y disco.")
-        except Exception as e:
-            await query.edit_message_text(report_error("eliminar la serie", e))
+        await _delete_with_torrents(
+            query, "la serie",
+            get_ids=lambda: sonarr.get_exclusive_download_ids(sid),
+            delete=lambda: sonarr.delete_series(sid, delete_files=True),
+        )
 
     elif data == "del_cancel":
         await query.edit_message_text("Cancelado.")
+
+
+async def _delete_with_torrents(query, what: str, get_ids, delete):
+    """Delete a movie/series from the library AND its torrents + downloaded data.
+
+    Library files are hardlinks of the downloads, so deleting only the library
+    entry frees no space and leaves orphan torrents that show up in the queue.
+    """
+    try:
+        download_ids = get_ids()  # before deleting: history is tied to the item
+        delete()
+    except Exception as e:
+        await query.edit_message_text(report_error(f"eliminar {what}", e))
+        return
+
+    try:
+        count, freed = qbittorrent.delete_torrents(download_ids, delete_files=True)
+    except Exception as e:
+        await query.edit_message_text(
+            f"🗑 Eliminé {what} de la biblioteca.\n"
+            + report_error("borrar sus torrents", e)
+            + "\nBorralos a mano desde /downloads."
+        )
+        return
+
+    if count:
+        plural = "s" if count != 1 else ""
+        await query.edit_message_text(
+            f"🗑 Eliminé {what} de la biblioteca y {count} torrent{plural} "
+            f"({qbittorrent.format_size(freed)} liberados)."
+        )
+    else:
+        await query.edit_message_text(f"🗑 Eliminé {what} de la biblioteca (no tenía torrents en qBittorrent).")
 
 
 async def _show_movie_details(query, tmdb_id: int):

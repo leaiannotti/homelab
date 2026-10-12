@@ -105,6 +105,22 @@ def delete_torrent(torrent_hash: str, delete_files: bool = False) -> None:
     })
 
 
+def delete_torrents(hashes: set[str], delete_files: bool = True) -> tuple[int, int]:
+    """Delete the given torrents (ignores hashes qBittorrent doesn't have).
+
+    Returns (deleted_count, freed_bytes).
+    """
+    wanted = {h.lower() for h in hashes}
+    present = [t for t in get_torrents() if t.get("hash", "").lower() in wanted]
+    if not present:
+        return 0, 0
+    _post("/torrents/delete", {
+        "hashes": "|".join(t["hash"] for t in present),
+        "deleteFiles": "true" if delete_files else "false",
+    })
+    return len(present), sum(t.get("size", 0) for t in present)
+
+
 def format_speed(bps: int) -> str:
     if bps >= 1_048_576:
         return f"{bps / 1_048_576:.1f} MB/s"

@@ -152,6 +152,25 @@ def get_upcoming_movies(days: int = 60) -> list[dict]:
     return upcoming[:10]
 
 
+def get_exclusive_download_ids(movie_id: int) -> set[str]:
+    """Torrent hashes (downloadIds) of this movie that no other existing movie uses.
+
+    Must be called BEFORE deleting the movie.
+    """
+    ids = {r["downloadId"] for r in _get("/history/movie", movieId=movie_id) if r.get("downloadId")}
+    queue = _get("/queue", pageSize=500, includeUnknownMovieItems="false").get("records", [])
+    ids |= {r["downloadId"] for r in queue if r.get("movieId") == movie_id and r.get("downloadId")}
+
+    existing = {m["id"] for m in _get("/movie")}
+    exclusive = set()
+    for download_id in ids:
+        records = _get("/history", downloadId=download_id, pageSize=100).get("records", [])
+        others = {r.get("movieId") for r in records} - {movie_id, None}
+        if not others & existing:  # e.g. a multi-movie pack still used by another movie
+            exclusive.add(download_id)
+    return exclusive
+
+
 def delete_movie(radarr_id: int, delete_files: bool = True) -> None:
     r = httpx.delete(
         f"{RADARR_URL}/api/v3/movie/{radarr_id}",
